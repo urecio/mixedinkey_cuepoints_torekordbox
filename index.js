@@ -1,38 +1,44 @@
 const parser = require('xml2json');
 fs = require('fs');
 var mm = require('music-metadata');
-const util = require('util');
-const jwt = require('jsonwebtoken');
-
-const xml = fs.readFileSync('./collection.xml');
-const col = JSON.parse(parser.toJson(xml));
 
 const run = async () => {
 
-  // TODO: change dir!
-  const baseDir = '/Volumes/U/factory/PN/1PN/';
+  // config reading...
+  const baseDir = process.env.BASE_PATH;
+  const filesFormat = process.env.FILES_FORMAT;
 
-
-  const filesInDirectory = fs.readdirSync(baseDir);
+  
+  // count of files in collection vs files matched in directory
   let countMatches = 0;
   let countFilesInDir = 0;
+  
+  // reading directory...
+  const filesInDirectory = fs.readdirSync(baseDir);
+
+  // reading collection...
+  const xml = fs.readFileSync('./collection.xml');
+  const col = JSON.parse(parser.toJson(xml));
 
   await Promise.all(filesInDirectory.map(async (f) => {
     countFilesInDir++;
     
+    // mapping tracks on collection
     col['DJ_PLAYLISTS'].COLLECTION.TRACK = await Promise.all(col['DJ_PLAYLISTS'].COLLECTION.TRACK.map(async (t) => {
 
-      const nameFromLocation = t.Location.substring(t.Location.lastIndexOf('/') + 1, t.Location.length - '.mp3'.length).replace(new RegExp('%20', 'g'), ' ');
+      const nameFromLocation = t.Location.substring(t.Location.lastIndexOf('/') + 1, t.Location.length - `.${filesFormat}`.length).replace(new RegExp('%20', 'g'), ' ');
 
-      if (nameFromLocation === f.replace('.mp3', '')) {
+      if (nameFromLocation === f.replace(`.${filesFormat}`, '')) {
         countMatches++;
 
+        // giving the right shape to the POSITION_MARK
         if (!t.POSITION_MARK) {
           t.POSITION_MARK = [];
-        } else if (t.POSITION_MARK.Type) { // is an object, we create the array
+        } else if (t.POSITION_MARK.Type) { // is an object, creating an array instead...
           t.POSITION_MARK = [t.POSITION_MARK];
         }
 
+        // Clearing existing stuff (we just leave the type "cue")
         t.POSITION_MARK = t.POSITION_MARK.filter((cueP) => cueP.Type !== '0');
 
         // adding cue points from mixed in key
@@ -40,11 +46,14 @@ const run = async () => {
           native: true
         });
         const cuePointsEnc = metadata.native['ID3v2.4'].filter((idNode) => idNode.id === 'GEOB' && idNode.value.description === 'uePoints');
-        const offsets = metadata.native['ID3v2.4'].filter((idNode) => idNode.id === 'GEOB' && idNode.value.description.indexOf('Offsets') !== -1);
         const cueDataStream = cuePointsEnc[0].value.data;
-        const cueJwt = cueDataStream.toString('ascii').replace('uePoints', '');
-        const cuePoints = JSON.parse(Buffer.from(cueJwt, 'base64').toString('ascii')).cues;
+        const cueBase64 = cueDataStream.toString('ascii').replace('uePoints', '');
+        const cuePoints = JSON.parse(Buffer.from(cueBase64, 'base64').toString('ascii')).cues;
+
+        // only the first 2 and the last 2... cdjs, ya know...
         const filteredCuePoints = cuePoints.filter((c, i) => [3,4,5].indexOf(i) === -1);
+
+        // mapping cue points with the right format for rekordbox
         t.POSITION_MARK = t.POSITION_MARK.concat(filteredCuePoints.map((c, i) => {
           return {
             Name: c.name,
@@ -61,7 +70,8 @@ const run = async () => {
     }));    
           
   }));
-        
+
+  // this 2 should be the same
   console.log('countMatches', countMatches);
   console.log('count files in dir', countFilesInDir);
 
