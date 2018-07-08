@@ -2,6 +2,8 @@ const parser = require('xml2json');
 fs = require('fs');
 var mm = require('music-metadata');
 
+require('dotenv').config()
+
 const run = async () => {
 
   // config reading...
