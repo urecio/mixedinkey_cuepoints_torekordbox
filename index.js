@@ -4,7 +4,9 @@ var mm = require('music-metadata');
 
 require('dotenv').config()
 
-const updateCollectionTracksWithCuesFromMixedInKey = async (col, tracks, parentDir, baseDir) => {
+let tracks = [];
+
+const updateCollectionTracksWithCuesFromMixedInKey = async (col, parentDir, baseDir) => {
 
   // count of files in collection vs files matched in directory
   let countMatches = 0;
@@ -93,10 +95,8 @@ const run = async () => {
   const xml = fs.readFileSync('./collection.xml');
   const col = JSON.parse(parser.toJson(xml));
 
-  let tracks = [];
-
-  if (parentDir) await Promise.all(fs.readdirSync(parentDir).map((dir) => updateCollectionTracksWithCuesFromMixedInKey(col, tracks, parentDir, dir)));
-  else await updateCollectionTracksWithCuesFromMixedInKey(col, tracks, '', baseDir);
+  if (parentDir) await Promise.all(fs.readdirSync(parentDir).map((dir) => updateCollectionTracksWithCuesFromMixedInKey(col, parentDir, dir)));
+  else await updateCollectionTracksWithCuesFromMixedInKey(col, '', baseDir);
 
   col['DJ_PLAYLISTS'].COLLECTION.TRACK = tracks.filter(t => t);
   
