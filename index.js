@@ -1,21 +1,19 @@
 const parser = require('xml2json');
 fs = require('fs');
-var mm = require('music-metadata');
+const mm = require('music-metadata');
+const getAllFiles = require('./reader');
 
 require('dotenv').config()
 
 let tracks = [];
 
-const updateCollectionTracksWithCuesFromMixedInKey = async (col, parentDir, baseDir) => {
+const updateCollectionTracksWithCuesFromMixedInKey = async (col, filesInDirectory) => {
 
   // count of files in collection vs files matched in directory
   let countMatches = 0;
   let countFilesInDir = 0;
   let missingFilesInCollectionXml = [];
   const filesFormat = process.env.FILES_FORMAT;
-
-  // reading directory...
-  const filesInDirectory = fs.readdirSync(`${parentDir}${baseDir}`);
 
   await Promise.all(filesInDirectory.map(async (f) => {
     countFilesInDir++;
@@ -26,9 +24,13 @@ const updateCollectionTracksWithCuesFromMixedInKey = async (col, parentDir, base
 
       const nameFromLocation = t.Location.substring(t.Location.lastIndexOf('/') + 1, t.Location.length - `.${filesFormat}`.length)
         .replace(new RegExp('%20', 'g'), ' ')
-        .replace(new RegExp('%26', 'g'), '&');
+        .replace(new RegExp('%26', 'g'), '&')
+        .replace(new RegExp('%27', 'g'), "'")
+        .replace(new RegExp('%26', 'g'), '&')
 
-      if (nameFromLocation === f.replace(`.${filesFormat}`, '')) {
+      const nameFromFileInDir = f.substring(f.lastIndexOf('/') + 1, f.length - `.${filesFormat}`.length)
+
+      if (nameFromLocation === nameFromFileInDir) {
         countMatches++;
         hasBeenMatched = true;
 
@@ -43,7 +45,7 @@ const updateCollectionTracksWithCuesFromMixedInKey = async (col, parentDir, base
         t.POSITION_MARK = t.POSITION_MARK.filter((cueP) => cueP.Type !== '0');
 
         // adding cue points from mixed in key
-        const metadata = await mm.parseFile(`${parentDir}${baseDir}/${f}`, {
+        const metadata = await mm.parseFile(f, {
           native: true
         });
         const cuePointsEnc = metadata.native['ID3v2.4'].filter((idNode) => idNode.id === 'GEOB' && idNode.value.description === 'uePoints');
@@ -77,7 +79,6 @@ const updateCollectionTracksWithCuesFromMixedInKey = async (col, parentDir, base
   }));
 
   // this 2 should be the same
-  console.log('dir', baseDir);
   console.log('countMatches', countMatches);
   console.log('count files in dir', countFilesInDir);
   console.log('missing files in collection xml: ', missingFilesInCollectionXml.join(','));
@@ -88,15 +89,14 @@ const updateCollectionTracksWithCuesFromMixedInKey = async (col, parentDir, base
 const run = async () => {
 
   // config reading...
-  const parentDir =  process.env.PARENT_DIR;
-  const baseDir =  process.env.BASE_DIR;
+  const baseDir =  process.env.DIR;
 
   // reading collection...
   const xml = fs.readFileSync('./collection.xml');
   const col = JSON.parse(parser.toJson(xml));
 
-  if (parentDir) await Promise.all(fs.readdirSync(parentDir).map((dir) => updateCollectionTracksWithCuesFromMixedInKey(col, parentDir, dir)));
-  else await updateCollectionTracksWithCuesFromMixedInKey(col, '', baseDir);
+  const files = getAllFiles(baseDir).filter((f) => f.indexOf('/._') === -1);
+  await updateCollectionTracksWithCuesFromMixedInKey(col, files);
 
   col['DJ_PLAYLISTS'].COLLECTION.TRACK = tracks.filter(t => t);
   
